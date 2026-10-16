@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
+  <meta name="theme-color" content="#2156d8" />
+  <title>PhD Kickoff Meeting Availability</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <div class="eyebrow">UPEC / Nomige PhD project</div>
+        <h1 id="page-title">PhD Kickoff Meeting Availability</h1>
+        <p>Select all times when you are available, then save your choices. Common availability is highlighted automatically.</p>
+      </div>
+      <div class="meta">
+        <span class="pill">Yassine · Barbara · Amir · Sadok</span>
+        <span class="pill">Mon 19 → Thu 22 Oct 2026</span>
+        <span class="pill">30 minutes</span>
+      </div>
+    </section>
+
+    <div id="systemMessage" class="system-message" hidden></div>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <h2>1. Choose your name</h2>
+          <p>Please select only your own name.</p>
+        </div>
+        <button class="action secondary" id="refreshBtn" type="button">Refresh</button>
+      </div>
+      <div class="people" id="people"></div>
+      <div class="submission-status" id="submissionStatus"></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <h2>2. Best matches</h2>
+          <p>Slots with the greatest overlap appear first.</p>
+        </div>
+      </div>
+      <div id="summary" class="summary-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <h2>3. Select your availability</h2>
+          <p>Dubai time is shown first; Paris/Brussels time is shown below it.</p>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="dot blue"></i>Your selection</span>
+        <span><i class="dot green"></i>All four available</span>
+        <span>Badge = saved availability</span>
+      </div>
+      <div class="days" id="days"></div>
+      <div class="toolbar">
+        <button class="action primary" id="saveBtn" type="button" disabled>Save my choices</button>
+        <button class="action danger" id="clearBtn" type="button" disabled>Clear my choices</button>
+        <span class="save-status" id="saveStatus" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <footer>
+      Shared scheduling poll · Times are converted automatically using browser time-zone rules.
+    </footer>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
