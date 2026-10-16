@@ -44,7 +44,7 @@
   function fmtSaved(ts) {
     if (!ts) return "Not submitted";
     const d = new Date(ts);
-    return `Submitted ${new Intl.DateTimeFormat("en-GB", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }).format(d)}`;
+    return new Intl.DateTimeFormat("en-GB", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }).format(d);
   }
 
   function fmtSlot(slot) {
@@ -61,9 +61,14 @@
       body: payload ? JSON.stringify(payload) : undefined,
       cache: "no-store"
     });
-    if (!response.ok) throw new Error(await response.text() || response.statusText);
     const text = await response.text();
-    return text ? JSON.parse(text) : null;
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if (!response.ok) {
+      const message = data && typeof data === "object" && data.error ? data.error : (text || response.statusText);
+      throw new Error(message);
+    }
+    return data;
   }
 
   async function loadAll() {
@@ -96,105 +101,219 @@
     el.className = "system-message error";
     el.textContent = message;
   }
-  function clearError() { const el = $("systemMessage"); el.hidden = true; el.textContent = ""; }
+
+  function clearError() {
+    const el = $("systemMessage");
+    el.hidden = true;
+    el.textContent = "";
+  }
 
   function updateButtons() {
     const enabled = Boolean(state.participant) && backendConfigured();
-    $("saveBtn").disabled = !enabled || !state.dirty;
+    $("saveBtn").disabled = !enabled || !state.dirty || state.mine.size === 0;
     $("clearBtn").disabled = !enabled || state.mine.size === 0;
   }
 
   function renderPeople() {
-    const wrap = $("people"); wrap.innerHTML = "";
+    const wrap = $("people");
+    wrap.innerHTML = "";
     CONFIG.participants.forEach(p => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "person-btn" + (state.participant === p.name ? " active" : "");
       b.innerHTML = `${p.name}<span class="person-sub">${p.label}</span>`;
       b.onclick = async () => {
-        state.participant = p.name; $("saveStatus").textContent = "";
-        try { clearError(); await loadMine(); renderAll(); }
-        catch { showError("Could not load shared availability. Please refresh the page and try again."); }
+        state.participant = p.name;
+        $("saveStatus").textContent = "";
+        try {
+          clearError();
+          await loadMine();
+          renderAll();
+        } catch {
+          showError("Could not load shared availability. Please refresh the page and try again.");
+        }
       };
       wrap.appendChild(b);
     });
   }
 
   function renderSubmissionStatus() {
-    const wrap = $("submissionStatus"); wrap.innerHTML = "";
+    const wrap = $("submissionStatus");
+    wrap.innerHTML = "";
     CONFIG.participants.forEach(p => {
+      const savedCount = (state.everyone[p.name] || []).length;
+      const ts = state.updatedAt[p.name];
       const chip = document.createElement("span");
-      chip.className = "submission-chip" + (state.updatedAt[p.name] ? " done" : "");
-      chip.textContent = `${p.name}: ${fmtSaved(state.updatedAt[p.name])}`;
+      chip.className = "submission-chip" + (savedCount > 0 ? " done" : "");
+      if (savedCount > 0) {
+        chip.textContent = `${p.name}: Saved ${savedCount} slot${savedCount === 1 ? "" : "s"} · ${fmtSaved(ts)}`;
+      } else if (ts) {
+        chip.textContent = `${p.name}: No slots saved · last action ${fmtSaved(ts)}`;
+      } else {
+        chip.textContent = `${p.name}: Not submitted`;
+      }
       wrap.appendChild(chip);
     });
   }
 
   function renderSlots() {
-    const days = $("days"); days.innerHTML = "";
+    const days = $("days");
+    days.innerHTML = "";
     const grouped = {};
     state.slots.forEach(s => (grouped[s.date] ||= []).push(s));
     Object.values(grouped).forEach(slots => {
-      const card = document.createElement("div"); card.className = "day-card";
-      const head = document.createElement("div"); head.className = "day-head"; head.textContent = fmtDate(slots[0].start, "Asia/Dubai"); card.appendChild(head);
+      const card = document.createElement("div");
+      card.className = "day-card";
+      const head = document.createElement("div");
+      head.className = "day-head";
+      head.textContent = fmtDate(slots[0].start, "Asia/Dubai");
+      card.appendChild(head);
+
       slots.forEach(slot => {
-        const c = count(slot.id), mine = state.mine.has(slot.id), enabled = Boolean(state.participant) && backendConfigured();
+        const c = count(slot.id);
+        const mine = state.mine.has(slot.id);
+        const enabled = Boolean(state.participant) && backendConfigured();
         const row = document.createElement("label");
         row.className = "slot" + (mine ? " mine" : "") + (c === 4 ? " all" : "") + (!enabled ? " disabled" : "");
-        const box = document.createElement("input"); box.type = "checkbox"; box.checked = mine; box.disabled = !enabled;
-        box.onchange = () => { box.checked ? state.mine.add(slot.id) : state.mine.delete(slot.id); state.dirty = true; renderSlots(); updateButtons(); };
+
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = mine;
+        box.disabled = !enabled;
+        box.onchange = () => {
+          box.checked ? state.mine.add(slot.id) : state.mine.delete(slot.id);
+          state.dirty = true;
+          $("saveStatus").textContent = state.mine.size > 0
+            ? `${state.mine.size} slot${state.mine.size === 1 ? "" : "s"} selected — click Save my choices.`
+            : "No slots selected.";
+          renderSlots();
+          updateButtons();
+        };
+
         const times = fmtSlot(slot);
-        const txt = document.createElement("div"); txt.innerHTML = `<div class="time-main">${times.dxb}</div><div class="time-sub">${times.eu}</div>`;
-        const badge = document.createElement("div"); badge.className = "count" + (c === 4 ? " full" : ""); badge.textContent = `${c}/4`;
-        row.append(box, txt, badge); card.appendChild(row);
+        const txt = document.createElement("div");
+        txt.innerHTML = `<div class="time-main">${times.dxb}</div><div class="time-sub">${times.eu}</div>`;
+        const badge = document.createElement("div");
+        badge.className = "count" + (c === 4 ? " full" : "");
+        badge.textContent = `${c}/4`;
+        row.append(box, txt, badge);
+        card.appendChild(row);
       });
       days.appendChild(card);
     });
   }
 
   function renderSummary() {
-    const target = $("summary"); target.innerHTML = "";
-    const ranked = state.slots.map(slot => ({slot, c: count(slot.id)})).filter(x => x.c > 0).sort((a,b) => b.c-a.c || a.slot.start-b.slot.start);
-    if (!ranked.length) { target.innerHTML = '<div class="smallnote">No saved availability yet.</div>'; return; }
+    const target = $("summary");
+    target.innerHTML = "";
+    const ranked = state.slots
+      .map(slot => ({slot, c: count(slot.id)}))
+      .filter(x => x.c > 0)
+      .sort((a,b) => b.c-a.c || a.slot.start-b.slot.start);
+
+    if (!ranked.length) {
+      target.innerHTML = '<div class="smallnote">No saved availability yet.</div>';
+      return;
+    }
+
     const best = ranked[0].c;
     ranked.filter(x => x.c === best).slice(0,6).forEach(({slot,c}) => {
       const times = fmtSlot(slot);
       const names = CONFIG.participants.filter(p => (state.everyone[p.name] || []).includes(slot.id)).map(p => p.name);
-      const div = document.createElement("div"); div.className = "best-slot";
+      const div = document.createElement("div");
+      div.className = "best-slot";
       div.innerHTML = `<strong>${c===4 ? "All 4 available" : `${c}/4 available`}</strong><br>${fmtDate(slot.start,"Asia/Dubai")} · ${times.dxb}<br><span class="smallnote">${times.eu}<br>${names.join(", ")}</span>`;
       target.appendChild(div);
     });
   }
 
-  function renderAll() { renderPeople(); renderSubmissionStatus(); renderSummary(); renderSlots(); updateButtons(); }
+  function renderAll() {
+    renderPeople();
+    renderSubmissionStatus();
+    renderSummary();
+    renderSlots();
+    updateButtons();
+  }
 
   async function saveMine() {
-    await api("POST", { participant: state.participant, slots: [...state.mine].sort() });
+    const intended = [...state.mine].sort();
+    if (!intended.length) throw new Error("Choose at least one time slot before saving.");
+
+    const result = await api("POST", { participant: state.participant, slots: intended });
+    const saved = result && result.saved && Array.isArray(result.saved.slots) ? [...result.saved.slots].sort() : null;
+    if (!saved || JSON.stringify(saved) !== JSON.stringify(intended)) {
+      throw new Error("The server did not confirm all selected time slots. Please try again.");
+    }
+
     await loadMine();
-    $("saveStatus").textContent = `${state.participant}'s choices are saved.`;
+    $("saveStatus").textContent = `${state.participant}: ${intended.length} slot${intended.length === 1 ? "" : "s"} saved successfully.`;
+    renderAll();
+  }
+
+  async function clearMine() {
+    await api("POST", { participant: state.participant, slots: [], clear: true });
+    await loadMine();
+    $("saveStatus").textContent = `${state.participant}'s saved availability was cleared.`;
     renderAll();
   }
 
   async function refresh() {
     await loadAll();
     if (state.participant && !state.dirty) state.mine = new Set(state.everyone[state.participant] || []);
-    renderAll(); $("saveStatus").textContent = "Latest saved choices loaded.";
+    renderAll();
+    $("saveStatus").textContent = "Latest saved choices loaded.";
   }
 
   async function init() {
     document.title = CONFIG.title;
     state.slots = makeSlots();
-    if (!backendConfigured()) { showError("This deployment is not connected to the shared database yet."); renderAll(); return; }
-    try { await loadAll(); clearError(); } catch { showError("Could not connect to the shared availability database. Please try again later."); }
+    if (!backendConfigured()) {
+      showError("This deployment is not connected to the shared database yet.");
+      renderAll();
+      return;
+    }
+
+    try {
+      await loadAll();
+      clearError();
+    } catch {
+      showError("Could not connect to the shared availability database. Please try again later.");
+    }
     renderAll();
-    $("saveBtn").onclick = async () => { try { clearError(); await saveMine(); } catch { showError("Could not save your choices. Please try again."); } };
-    $("refreshBtn").onclick = async () => { try { clearError(); await refresh(); } catch { showError("Could not refresh shared availability. Please try again."); } };
+
+    $("saveBtn").onclick = async () => {
+      try {
+        clearError();
+        await saveMine();
+      } catch (e) {
+        showError(e?.message || "Could not save your choices. Please try again.");
+      }
+    };
+
+    $("refreshBtn").onclick = async () => {
+      try {
+        clearError();
+        await refresh();
+      } catch {
+        showError("Could not refresh shared availability. Please try again.");
+      }
+    };
+
     $("clearBtn").onclick = async () => {
       if (!state.participant || !confirm(`Clear all saved choices for ${state.participant}?`)) return;
-      state.mine.clear(); state.dirty = true;
-      try { clearError(); await saveMine(); } catch { showError("Could not clear your choices. Please try again."); }
+      try {
+        clearError();
+        await clearMine();
+      } catch {
+        showError("Could not clear your choices. Please try again.");
+      }
     };
-    setInterval(async () => { if (!state.dirty) { try { await refresh(); } catch {} } }, Math.max(15, CONFIG.refreshSeconds || 30) * 1000);
+
+    setInterval(async () => {
+      if (!state.dirty) {
+        try { await refresh(); } catch {}
+      }
+    }, Math.max(15, CONFIG.refreshSeconds || 30) * 1000);
   }
 
   init();
