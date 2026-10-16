@@ -6,7 +6,7 @@ window.MEETING_APP_CONFIG = {
     { name: "Yassine", zone: "Asia/Dubai", label: "Dubai" },
     { name: "Barbara", zone: "Europe/Brussels", label: "Belgium" },
     { name: "Amir", zone: "Europe/Paris", label: "Paris" },
-    { name: "Sadok", zone: "Europe/Paris", label: "Paris" }
+    { name: "Sadok", zone: "Asia/Dubai", label: "Dubai" }
   ],
   startDate: "2026-10-19",
   endDate: "2026-10-22",
