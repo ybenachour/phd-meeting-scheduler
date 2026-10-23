@@ -8,7 +8,7 @@ window.MEETING_APP_CONFIG = {
     { name: "Amir", zone: "Europe/Paris", label: "Paris" },
     { name: "Sadok", zone: "Asia/Dubai", label: "Dubai" }
   ],
-  startDate: "2026-10-22",
+  startDate: "2026-10-26",
   endDate: "2026-10-30",
   allowedWeekdays: [1, 2, 3, 4, 5],
   durationMinutes: 30,
