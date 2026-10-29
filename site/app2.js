@@ -33,6 +33,20 @@
     return out;
   }
 
+  function visibleSlotIds() {
+    return new Set(state.slots.map(s => s.id));
+  }
+
+  function currentSlotsFor(name) {
+    const visible = visibleSlotIds();
+    return (state.everyone[name] || []).filter(id => visible.has(id));
+  }
+
+  function archivedSlotsFor(name) {
+    const visible = visibleSlotIds();
+    return (state.everyone[name] || []).filter(id => !visible.has(id));
+  }
+
   function fmtTime(date, zone) {
     return new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
   }
@@ -87,7 +101,7 @@
 
   async function loadMine() {
     await loadAll();
-    state.mine = new Set(state.participant ? (state.everyone[state.participant] || []) : []);
+    state.mine = new Set(state.participant ? currentSlotsFor(state.participant) : []);
     state.dirty = false;
   }
 
@@ -141,12 +155,16 @@
     const wrap = $("submissionStatus");
     wrap.innerHTML = "";
     CONFIG.participants.forEach(p => {
-      const savedCount = (state.everyone[p.name] || []).length;
+      const currentCount = currentSlotsFor(p.name).length;
+      const archivedCount = archivedSlotsFor(p.name).length;
       const ts = state.updatedAt[p.name];
       const chip = document.createElement("span");
-      chip.className = "submission-chip" + (savedCount > 0 ? " done" : "");
-      if (savedCount > 0) {
-        chip.textContent = `${p.name}: Saved ${savedCount} slot${savedCount === 1 ? "" : "s"} · ${fmtSaved(ts)}`;
+      chip.className = "submission-chip" + (currentCount > 0 ? " done" : "");
+      if (currentCount > 0) {
+        const retained = archivedCount > 0 ? ` · ${archivedCount} previous retained` : "";
+        chip.textContent = `${p.name}: Saved ${currentCount} slot${currentCount === 1 ? "" : "s"} · ${fmtSaved(ts)}${retained}`;
+      } else if (archivedCount > 0) {
+        chip.textContent = `${p.name}: Not submitted for current dates · ${archivedCount} previous slot${archivedCount === 1 ? "" : "s"} retained`;
       } else if (ts) {
         chip.textContent = `${p.name}: No slots saved · last action ${fmtSaved(ts)}`;
       } else {
@@ -184,8 +202,8 @@
           box.checked ? state.mine.add(slot.id) : state.mine.delete(slot.id);
           state.dirty = true;
           $("saveStatus").textContent = state.mine.size > 0
-            ? `${state.mine.size} slot${state.mine.size === 1 ? "" : "s"} selected — click Save my choices.`
-            : "No slots selected.";
+            ? `${state.mine.size} slot${state.mine.size === 1 ? "" : "s"} selected for the current dates — click Save my choices.`
+            : "No slots selected for the current dates.";
           renderSlots();
           updateButtons();
         };
@@ -212,7 +230,7 @@
       .sort((a,b) => b.c-a.c || a.slot.start-b.slot.start);
 
     if (!ranked.length) {
-      target.innerHTML = '<div class="smallnote">No saved availability yet.</div>';
+      target.innerHTML = '<div class="smallnote">No saved availability yet for these dates.</div>';
       return;
     }
 
@@ -236,9 +254,11 @@
   }
 
   async function saveMine() {
-    const intended = [...state.mine].sort();
-    if (!intended.length) throw new Error("Choose at least one time slot before saving.");
+    const current = [...state.mine].sort();
+    if (!current.length) throw new Error("Choose at least one time slot before saving.");
 
+    const archived = archivedSlotsFor(state.participant);
+    const intended = [...new Set([...archived, ...current])].sort();
     const result = await api("POST", { participant: state.participant, slots: intended });
     const saved = result && result.saved && Array.isArray(result.saved.slots) ? [...result.saved.slots].sort() : null;
     if (!saved || JSON.stringify(saved) !== JSON.stringify(intended)) {
@@ -246,20 +266,28 @@
     }
 
     await loadMine();
-    $("saveStatus").textContent = `${state.participant}: ${intended.length} slot${intended.length === 1 ? "" : "s"} saved successfully.`;
+    $("saveStatus").textContent = `${state.participant}: ${current.length} current slot${current.length === 1 ? "" : "s"} saved successfully. Previous records were retained.`;
     renderAll();
   }
 
   async function clearMine() {
-    await api("POST", { participant: state.participant, slots: [], clear: true });
+    const archived = archivedSlotsFor(state.participant).sort();
+    const payload = archived.length
+      ? { participant: state.participant, slots: archived }
+      : { participant: state.participant, slots: [], clear: true };
+    const result = await api("POST", payload);
+    const saved = result && result.saved && Array.isArray(result.saved.slots) ? [...result.saved.slots].sort() : [];
+    if (JSON.stringify(saved) !== JSON.stringify(archived)) {
+      throw new Error("The server did not confirm the update. Please try again.");
+    }
     await loadMine();
-    $("saveStatus").textContent = `${state.participant}'s saved availability was cleared.`;
+    $("saveStatus").textContent = `${state.participant}'s choices for the current dates were cleared. Previous records were retained.`;
     renderAll();
   }
 
   async function refresh() {
     await loadAll();
-    if (state.participant && !state.dirty) state.mine = new Set(state.everyone[state.participant] || []);
+    if (state.participant && !state.dirty) state.mine = new Set(currentSlotsFor(state.participant));
     renderAll();
     $("saveStatus").textContent = "Latest saved choices loaded.";
   }
@@ -300,12 +328,12 @@
     };
 
     $("clearBtn").onclick = async () => {
-      if (!state.participant || !confirm(`Clear all saved choices for ${state.participant}?`)) return;
+      if (!state.participant || !confirm(`Clear saved choices for ${state.participant} for the current dates only? Previous records will be kept.`)) return;
       try {
         clearError();
         await clearMine();
-      } catch {
-        showError("Could not clear your choices. Please try again.");
+      } catch (e) {
+        showError(e?.message || "Could not clear your choices. Please try again.");
       }
     };
 
